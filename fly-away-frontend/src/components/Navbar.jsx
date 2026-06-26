@@ -28,10 +28,12 @@ const Navbar = () => {
             {isAuthenticated ? (
               // ---- USUARIO AUTENTICADO ----
               <>
-                {/* Mostrar nombre del usuario si existe */}
+                {/* Mostrar nombre del usuario si existe.
+                    Nota: UserNoPasswordDTO solo expone {id, username, role} —
+                    no existen los campos "nombre" ni "name" que se leían antes. */}
                 {user && (
                   <span className="text-white font-medium">
-                    👋 Hola, {user.nombre || user.name || 'Usuario'}
+                    👋 Hola, {user.firstName || user.username || 'Usuario'}
                   </span>
                 )}
                 

@@ -43,6 +43,7 @@ axiosClient.interceptors.response.use(
       // 2. Limpiamos el localStorage (borramos el token falso o expirado)
       localStorage.removeItem('token');
       localStorage.removeItem('user'); // Si guardamos user, también lo borramos
+      localStorage.removeItem('myBookings'); // Evita dejar reservas de la sesión expirada visibles
       
       // 3. Redirigimos al login usando window.location (o navigate si estamos en un componente)
       // Usamos window.location porque es el método más seguro en interceptores (fuera del contexto de React)

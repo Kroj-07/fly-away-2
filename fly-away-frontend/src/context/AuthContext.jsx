@@ -67,18 +67,16 @@ export const AuthProvider = ({ children }) => {
 
   // ---- Función de REGISTRO (no guarda token, solo crea el usuario) ----
   const register = async (userData) => {
-    try {
-      const payload = {
+    const payload = {
       ...userData,
-      username: userData.email // <--- Si no viene username, usamos email
+      username: userData.email, // <--- Si no viene username, usamos email
     };
+    // CORRECCIÓN: la redirección NO se hace aquí. Si navegáramos a /login
+    // inmediatamente, RegisterPage se desmonta antes de poder pintar su
+    // mensaje de éxito (setSuccess(true) llega tarde). Dejamos que sea
+    // RegisterPage quien decida cuándo navegar, después de mostrar el mensaje.
     await axiosClient.post('/users/register', payload);
-      // Redirigimos al login (página 4: "Mostrar mensaje de éxito y redirigir al login")
-      navigate('/login');
-      return { success: true };
-    } catch (error) {
-      throw error;
-    }
+    return { success: true };
   };
 
   // ---- Función de LOGOUT (limpiar todo) ----
@@ -86,6 +84,10 @@ export const AuthProvider = ({ children }) => {
     // Limpiamos localStorage
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    // CORRECCIÓN: 'myBookings' también debe limpiarse; si no, las reservas
+    // del usuario anterior quedarían visibles para el siguiente que inicie
+    // sesión en el mismo navegador.
+    localStorage.removeItem('myBookings');
     
     // Limpiamos el estado del cerebro
     setToken(null);

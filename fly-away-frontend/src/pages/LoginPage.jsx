@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
@@ -43,14 +44,9 @@ const LoginPage = () => {
       setLoading(false);
     } catch (err) {
       setLoading(false);
-      // Manejo de errores del backend
-      if (err.response && err.response.data && err.response.data.message) {
-        setError(err.response.data.message);
-      } else if (err.response && err.response.status === 401) {
-        setError('Credenciales incorrectas. Verifica tu email y contraseña.');
-      } else {
-        setError('Error al iniciar sesión. Intenta nuevamente.');
-      }
+      // El backend lanza ValidationException -> ProblemDetail con "detail" cuando el
+      // usuario no existe o la contraseña es incorrecta (ambos casos: 400 Bad Request)
+      setError(getErrorMessage(err, 'Credenciales incorrectas. Verifica tu email y contraseña.'));
     }
   };
 

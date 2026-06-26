@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 const RegisterPage = () => {
   // Estado del formulario (corregido)
@@ -17,6 +18,7 @@ const RegisterPage = () => {
   const [success, setSuccess] = useState(false);
 
   const { register } = useAuth();
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -36,8 +38,22 @@ const RegisterPage = () => {
       setError('Ingresa un correo electrónico válido');
       return;
     }
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres');
+    // El backend exige firstName/lastName que empiecen con mayúscula (regex ^[A-Z].+)
+    if (!/^[A-Z].+/.test(firstName)) {
+      setError('El nombre debe comenzar con una letra mayúscula');
+      return;
+    }
+    if (!/^[A-Z].+/.test(lastName)) {
+      setError('El apellido debe comenzar con una letra mayúscula');
+      return;
+    }
+    // El backend exige mínimo 8 caracteres, al menos una mayúscula y un dígito
+    if (password.length < 8) {
+      setError('La contraseña debe tener al menos 8 caracteres');
+      return;
+    }
+    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      setError('La contraseña debe incluir al menos una letra mayúscula y un número');
       return;
     }
 
@@ -53,16 +69,13 @@ const RegisterPage = () => {
       });
       setSuccess(true);
       setLoading(false);
+      // Mostramos el mensaje de éxito un instante antes de redirigir al login
+      // (antes, la redirección ocurría dentro de register() y el mensaje
+      // nunca llegaba a pintarse porque el componente ya se había desmontado).
+      setTimeout(() => navigate('/login'), 1500);
     } catch (err) {
       setLoading(false);
-      if (err.response && err.response.data && err.response.data.message) {
-        setError(err.response.data.message);
-      } else if (err.response && err.response.data) {
-        const messages = Object.values(err.response.data).flat();
-        setError(messages.join(' '));
-      } else {
-        setError('Error al registrar usuario. Intenta nuevamente.');
-      }
+      setError(getErrorMessage(err, 'Error al registrar usuario. Intenta nuevamente.'));
     }
   };
 
@@ -147,7 +160,7 @@ const RegisterPage = () => {
                 value={formData.password}
                 onChange={handleChange}
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Contraseña (mínimo 6 caracteres)"
+                placeholder="Contraseña (mín. 8 caracteres, 1 mayúscula y 1 número)"
               />
             </div>
           </div>

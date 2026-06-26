@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axiosClient from '../api/axiosClient';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 const SearchFlightsPage = () => {
   // Estado para los filtros de búsqueda
@@ -18,6 +19,8 @@ const SearchFlightsPage = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [searched, setSearched] = useState(false); // Para saber si ya se hizo una búsqueda
   const [bookingLoading, setBookingLoading] = useState(null); // guarda el flightId que se está reservando
+  const [lastBooking, setLastBooking] = useState(null); // detalle de la última reserva creada (Nice to have)
+  const [detailLoading, setDetailLoading] = useState(false);
 
   // Obtenemos el token para saber si el usuario está autenticado
   const { token } = useAuth();
@@ -62,12 +65,7 @@ const SearchFlightsPage = () => {
       setLoading(false);
     } catch (err) {
       setLoading(false);
-      // Manejo de errores
-      if (err.response && err.response.data && err.response.data.message) {
-        setError(err.response.data.message);
-      } else {
-        setError('Error al buscar vuelos. Intenta nuevamente.');
-      }
+      setError(getErrorMessage(err, 'Error al buscar vuelos. Intenta nuevamente.'));
       setFlights([]);
     }
   };
@@ -97,13 +95,14 @@ const SearchFlightsPage = () => {
     setBookingLoading(flightId); // Marcar este vuelo como "cargando"
     setError(''); // Limpiar errores anteriores
     setSuccessMessage(''); // Limpiar mensajes de éxito anteriores
+    setLastBooking(null); // Limpiar detalle de reserva anterior
 
     try {
       // 1. Hacemos la petición POST al endpoint protegido
       // El interceptor de Axios agregará automáticamente el token
       const response = await axiosClient.post('/flights/book', { flightId });
       
-      // 2. Extraemos el bookingId de la respuesta (asumimos que viene en response.data.bookingId)
+      // 2. Extraemos el bookingId de la respuesta (viene en response.data.id, NewIdDTO)
       const bookingId = response.data.id;    
       // 3. Guardamos el bookingId en localStorage (para "Mis Reservas")
       const currentBookings = JSON.parse(localStorage.getItem('myBookings') || '[]');
@@ -112,39 +111,31 @@ const SearchFlightsPage = () => {
       
       // 4. Mostramos mensaje de éxito
       setSuccessMessage(`✅ ¡Reserva creada! ID: ${bookingId}`);
-      
-      // 5. Opcional: podríamos actualizar la lista de vuelos para reflejar asientos disponibles,
-      // pero eso sería otra llamada al backend. Por ahora, solo mostramos el éxito.
+
+      // 5. Cargamos el detalle de la reserva recién creada (Nice to have)
+      try {
+        setDetailLoading(true);
+        const detail = await fetchBookingDetail(bookingId);
+        setLastBooking(detail);
+      } catch {
+        // Si falla el detalle, no bloqueamos el flujo principal: la reserva ya se creó.
+      } finally {
+        setDetailLoading(false);
+      }
       
     } catch (err) {
       // ---- MANEJO DE ERRORES DEL BACKEND (PPT: "Mostrar errores del backend") ----
-      let errorMessage = 'Error al reservar el vuelo. Intenta nuevamente.';
-      
-      if (err.response && err.response.data) {
-        // Si el backend devuelve un mensaje directo
-        if (err.response.data.message) {
-          errorMessage = err.response.data.message;
-        } 
-        // Si devuelve un objeto con múltiples errores
-        else if (typeof err.response.data === 'object') {
-          const messages = Object.values(err.response.data).flat();
-          errorMessage = messages.join(' ');
-        }
-      }
-      
-      setError(errorMessage);
-      
-      // Si el error es 401 (no autorizado), el interceptor ya redirigirá al login,
-      // pero mostramos el mensaje por si acaso.
+      // El backend lanza ValidationException -> ProblemDetail con "detail" para casos como
+      // "Cannot book a past flight" o "Overlapping flight found"
       if (err.response && err.response.status === 401) {
         setError('Tu sesión ha expirado. Inicia sesión nuevamente.');
+      } else {
+        setError(getErrorMessage(err, 'Error al reservar el vuelo. Intenta nuevamente.'));
       }
     } finally {
       // Siempre liberamos el estado de carga, haya éxito o error
       setBookingLoading(null);
     }
-    // <--- CORRECCIÓN: Eliminado el JSX suelto que estaba aquí (causaba error de sintaxis).
-    // El mensaje de éxito se renderiza en el return principal usando {successMessage && ...}
   };
 
   // ---- RENDERIZADO PRINCIPAL ----
@@ -239,6 +230,22 @@ const SearchFlightsPage = () => {
         </div>
       )}
 
+      {/* Detalle de la reserva recién creada (Nice to have) */}
+      {detailLoading && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded mb-4 text-sm">
+          Cargando detalle de la reserva...
+        </div>
+      )}
+      {lastBooking && !detailLoading && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded mb-4 text-sm">
+          <p className="font-semibold mb-1">Detalle de tu reserva</p>
+          <p>Vuelo: {lastBooking.flightNumber}</p>
+          <p>Salida: {lastBooking.estDepartureTime ? new Date(lastBooking.estDepartureTime).toLocaleString() : 'N/A'}</p>
+          <p>Llegada: {lastBooking.estArrivalTime ? new Date(lastBooking.estArrivalTime).toLocaleString() : 'N/A'}</p>
+          <p>Pasajero: {lastBooking.customerFirstName} {lastBooking.customerLastName}</p>
+        </div>
+      )}
+
       {/* Resultados */}
       {searched && !loading && (
         <div className="bg-white shadow-md rounded-lg overflow-hidden">
@@ -264,10 +271,14 @@ const SearchFlightsPage = () => {
                   {Array.isArray(flights) && flights.map((flight) => (
                     <tr key={flight.id || flight.flightNumber}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{flight.flightNumber}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{flight.airline}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{flight.departure}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{flight.arrival}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{flight.seats}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{flight.airlineName}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {flight.estDepartureTime ? new Date(flight.estDepartureTime).toLocaleString() : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {flight.estArrivalTime ? new Date(flight.estArrivalTime).toLocaleString() : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{flight.availableSeats}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <button
                             disabled={!isAuthenticated || bookingLoading === flight.id}
